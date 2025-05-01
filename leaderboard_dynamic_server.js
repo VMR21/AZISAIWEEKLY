@@ -24,7 +24,7 @@ const formatUsername = (username) => {
 // Calculate the current 7-day interval since May 1, 2025 UTC
 function getCurrent7DayWindow() {
     const now = new Date();
-    const base = new Date(Date.UTC(2025, 4, 1, 0, 0, 0)); // May is month 4 (0-indexed)
+    const base = new Date(Date.UTC(2025, 3, 30, 15, 0, 1)); // April 30, 2025 @ 15:00:01 UTC = May 1 JST 00:00:01
     const msIn7Days = 7 * 24 * 60 * 60 * 1000;
     const diff = now.getTime() - base.getTime();
     const intervalIndex = Math.floor(diff / msIn7Days);
