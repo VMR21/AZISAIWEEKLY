@@ -104,6 +104,19 @@ app.get("/leaderboard/top14", (req, res) => {
     res.json(top14);
 });
 
+// Users who wagered above 1000
+app.get("/1000", (req, res) => {
+    const above1000 = leaderboardCache.filter(player => player.weightedWager >= 1000);
+    res.json(above1000);
+});
+
+// Users who wagered above 5000
+app.get("/5000", (req, res) => {
+    const above5000 = leaderboardCache.filter(player => player.weightedWager >= 5000);
+    res.json(above5000);
+});
+
+
 // Fetch leaderboard every 5 mins
 fetchLeaderboardData();
 setInterval(fetchLeaderboardData, 5 * 60 * 1000);
