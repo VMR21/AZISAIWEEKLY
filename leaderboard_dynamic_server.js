@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 
 const apiUrl = "https://roobetconnect.com/affiliate/v2/stats";
-const apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjI2YWU0ODdiLTU3MDYtNGE3ZS04YTY5LTMzYThhOWM5NjMxYiIsIm5vbmNlIjoiZWI2MzYyMWUtMTMwZi00ZTE0LTlmOWMtOTY3MGNiZGFmN2RiIiwic2VydmljZSI6ImFmZmlsaWF0ZVN0YXRzIiwiaWF0IjoxNzI3MjQ2NjY1fQ.rVG_QKMcycBEnzIFiAQuixfu6K_oEkAq2Y8Gukco3b8"; // Use your full key
+const apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjI2YWU0ODdiLTU3MDYtNGE3ZS04YTY5LTMzYThhOWM5NjMxYiIsIm5vbmNlIjoiZWI2MzYyMWUtMTMwZi00ZTE0LTlmOWMtOTY3MGNiZGFmN2RiIiwic2VydmljZSI6ImFmZmlsaWF0ZVN0YXRzIiwiaWF0IjoxNzI3MjQ2NjY1fQ.rVG_QKMcycBEnzIFiAQuixfu6K_oEkAq2Y8Gukco3b8";
 
 let leaderboardCache = [];
 
@@ -18,37 +18,38 @@ const formatUsername = (username) => {
     return `${firstTwo}***${lastTwo}`;
 };
 
-// Get current JST 7-day window based on fixed rounds
+// Get current JST weekly window (1-7, 8-14, 15-21, 22-28)
 function getJST7DayPeriodWindow() {
-    const now = new Date(new Date().getTime() + 9 * 60 * 60 * 1000); // convert to JST
-    const year = now.getUTCFullYear();
-    const month = now.getUTCMonth();
+    const nowJST = new Date(Date.now() + 9 * 60 * 60 * 1000); // UTC+9
 
-    const day = now.getUTCDate();
+    const year = nowJST.getUTCFullYear();
+    const month = nowJST.getUTCMonth();
+    const date = nowJST.getUTCDate();
+
     let startDay, endDay;
 
-    if (day >= 1 && day <= 7) {
+    if (date >= 1 && date <= 7) {
         startDay = 1;
         endDay = 7;
-    } else if (day >= 8 && day <= 14) {
+    } else if (date >= 8 && date <= 14) {
         startDay = 8;
         endDay = 14;
-    } else if (day >= 15 && day <= 21) {
+    } else if (date >= 15 && date <= 21) {
         startDay = 15;
         endDay = 21;
-    } else if (day >= 22 && day <= 28) {
+    } else if (date >= 22 && date <= 28) {
         startDay = 22;
         endDay = 28;
     } else {
-        return null; // no leaderboard during 29–31
+        return null; // outside valid period
     }
 
-    const startDate = new Date(Date.UTC(year, month, startDay - 1, 15, 0, 1)); // JST 00:00:01 = UTC 15:00:01 prev day
-    const endDate = new Date(Date.UTC(year, month, endDay, 14, 59, 59)); // JST 23:59:59 = UTC 14:59:59 same day
+    const start = new Date(Date.UTC(year, month, startDay - 1, 15, 0, 1)); // JST 00:00:01
+    const end = new Date(Date.UTC(year, month, endDay, 14, 59, 59));       // JST 23:59:59
 
     return {
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
     };
 }
 
@@ -56,7 +57,7 @@ async function fetchLeaderboardData() {
     try {
         const period = getJST7DayPeriodWindow();
         if (!period) {
-            console.log("No active leaderboard period (29th–31st JST)");
+            console.log("No leaderboard active (JST 29–31).");
             leaderboardCache = [];
             return;
         }
@@ -77,58 +78,50 @@ async function fetchLeaderboardData() {
         leaderboardCache = data
             .filter((player) => player.username !== "azisai205")
             .sort((a, b) => b.weightedWagered - a.weightedWagered)
-            .slice(0, 100000)
             .map((player) => ({
                 username: formatUsername(player.username),
                 wagered: Math.round(player.weightedWagered),
                 weightedWager: Math.round(player.weightedWagered),
             }));
 
-        console.log(`Leaderboard updated for ${startDate} to ${endDate}`);
+        console.log(`✅ Updated leaderboard cache for ${startDate} to ${endDate}`);
     } catch (error) {
-        console.error("Error fetching leaderboard data:", error.message);
+        console.error("❌ Error fetching leaderboard:", error.message);
     }
 }
 
 // Routes
 app.get("/", (req, res) => {
-    res.send("Welcome to the Leaderboard API. Access /leaderboard or /leaderboard/top14");
+    res.send("Welcome. Access /1000 or /5000 for this week's filtered data.");
 });
 
-app.get("/leaderboard", (req, res) => {
-    res.json(leaderboardCache);
-});
-
-app.get("/leaderboard/top14", (req, res) => {
-    const top14 = leaderboardCache.slice(0, 14);
-    res.json(top14);
-});
-
-// Users who wagered above 1000
+// 1000 ≤ wager < 5000
 app.get("/1000", (req, res) => {
-    const above1000 = leaderboardCache.filter(player => player.weightedWager >= 1000);
-    res.json(above1000);
+    const filtered = leaderboardCache.filter(
+        (p) => p.weightedWager >= 1000 && p.weightedWager < 5000
+    );
+    res.json(filtered);
 });
 
-// Users who wagered above 5000
+// wager ≥ 5000
 app.get("/5000", (req, res) => {
-    const above5000 = leaderboardCache.filter(player => player.weightedWager >= 5000);
-    res.json(above5000);
+    const filtered = leaderboardCache.filter((p) => p.weightedWager >= 5000);
+    res.json(filtered);
 });
 
 
-// Fetch leaderboard every 5 mins
+// Refresh cache every 5 mins
 fetchLeaderboardData();
 setInterval(fetchLeaderboardData, 5 * 60 * 1000);
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-});
-
-// Self-ping to keep Render alive
+// Keep Render alive
 setInterval(() => {
-    axios.get("https://azisaiweekly-upnb.onrender.com/leaderboard/top14")
-        .then(() => console.log("Self-ping successful."))
+    axios.get("https://azisaiweekly-upnb.onrender.com/5000")
+        .then(() => console.log("🔁 Self-ping success"))
         .catch((err) => console.error("Self-ping failed:", err.message));
 }, 4 * 60 * 1000);
+
+// Start server
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Server live at port ${PORT}`);
+});
