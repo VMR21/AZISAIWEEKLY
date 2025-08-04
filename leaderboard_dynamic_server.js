@@ -18,34 +18,25 @@ const formatUsername = (username) => {
     return `${firstTwo}***${lastTwo}`;
 };
 
-// Get current JST weekly window (1-7, 8-14, 15-21, 22-28)
-function getJST7DayPeriodWindow() {
-    const nowJST = new Date(Date.now() + 9 * 60 * 60 * 1000); // UTC+9
+// Get current JST weekly leaderboard window: Tuesday 00:00:01 JST - next Monday 23:59:59 JST
+function getJSTWeeklyWindow() {
+    // Current UTC+9 (JST)
+    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
 
-    const year = nowJST.getUTCFullYear();
-    const month = nowJST.getUTCMonth();
-    const date = nowJST.getUTCDate();
+    // Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+    let dayOfWeek = now.getUTCDay();
 
-    let startDay, endDay;
+    // Find Monday of this week in JST
+    const diffToMonday = (dayOfWeek + 6) % 7; // since 1=Monday in getUTCDay
+    // End: This week's Monday 23:59:59 JST
+    const end = new Date(now);
+    end.setUTCDate(now.getUTCDate() - diffToMonday + 1);
+    end.setUTCHours(14, 59, 59, 0); // 23:59:59 JST (UTC 14:59:59)
 
-    if (date >= 1 && date <= 7) {
-        startDay = 1;
-        endDay = 7;
-    } else if (date >= 8 && date <= 14) {
-        startDay = 8;
-        endDay = 14;
-    } else if (date >= 15 && date <= 21) {
-        startDay = 15;
-        endDay = 21;
-    } else if (date >= 22 && date <= 28) {
-        startDay = 22;
-        endDay = 28;
-    } else {
-        return null; // outside valid period
-    }
-
-    const start = new Date(Date.UTC(year, month, startDay - 1, 15, 0, 1)); // JST 00:00:01
-    const end = new Date(Date.UTC(year, month, endDay, 14, 59, 59));       // JST 23:59:59
+    // Start: Last week's Tuesday 00:00:01 JST
+    const start = new Date(end);
+    start.setUTCDate(end.getUTCDate() - 6); // last Tuesday
+    start.setUTCHours(15, 0, 1, 0); // 00:00:01 JST (UTC 15:00:01 previous day)
 
     return {
         startDate: start.toISOString(),
@@ -55,13 +46,7 @@ function getJST7DayPeriodWindow() {
 
 async function fetchLeaderboardData() {
     try {
-        const period = getJST7DayPeriodWindow();
-        if (!period) {
-            console.log("No leaderboard active (JST 29–31).");
-            leaderboardCache = [];
-            return;
-        }
-
+        const period = getJSTWeeklyWindow();
         const { startDate, endDate } = period;
 
         const response = await axios.get(apiUrl, {
@@ -95,7 +80,6 @@ app.get("/", (req, res) => {
     res.send("Welcome. Access /1000 or /5000 for this week's filtered data.");
 });
 
-// 1000 ≤ wager < 5000
 app.get("/1000", (req, res) => {
     const filtered = leaderboardCache.filter(
         (p) => p.weightedWager >= 1000 && p.weightedWager < 5000
@@ -103,12 +87,10 @@ app.get("/1000", (req, res) => {
     res.json(filtered);
 });
 
-// wager ≥ 5000
 app.get("/5000", (req, res) => {
     const filtered = leaderboardCache.filter((p) => p.weightedWager >= 5000);
     res.json(filtered);
 });
-
 
 // Refresh cache every 5 mins
 fetchLeaderboardData();
@@ -121,7 +103,6 @@ setInterval(() => {
         .catch((err) => console.error("Self-ping failed:", err.message));
 }, 4 * 60 * 1000);
 
-// Start server
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`🚀 Server live at port ${PORT}`);
 });
