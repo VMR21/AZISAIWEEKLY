@@ -13,115 +13,101 @@ const apiKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjI2YWU0ODdiLTU3MDY
 let leaderboardCache = [];
 
 const formatUsername = (username) => {
-    const firstTwo = username.slice(0, 2);
-    const lastTwo = username.slice(-2);
-    return `${firstTwo}***${lastTwo}`;
+  const firstTwo = username.slice(0, 2);
+  const lastTwo = username.slice(-2);
+  return `${firstTwo}***${lastTwo}`;
 };
 
-// Get current JST weekly window (1-7, 8-14, 15-21, 22-28)
-function getJST7DayPeriodWindow() {
-    const nowJST = new Date(Date.now() + 9 * 60 * 60 * 1000); // UTC+9
+// Weekly cycle from Tuesday 00:00:01 JST to next Monday 23:59:59 JST
+function getJSTWeeklyPeriod() {
+  const now = new Date();
 
-    const year = nowJST.getUTCFullYear();
-    const month = nowJST.getUTCMonth();
-    const date = nowJST.getUTCDate();
+  // Convert to JST
+  const jstOffsetMs = 9 * 60 * 60 * 1000;
+  const nowJST = new Date(now.getTime() + jstOffsetMs);
 
-    let startDay, endDay;
+  // Find most recent Monday 23:59:59 JST
+  const dayOfWeek = nowJST.getUTCDay(); // Sunday = 0, Monday = 1, ..., Saturday = 6
+  const daysSinceMonday = (dayOfWeek + 6) % 7; // Days since last Monday
 
-    if (date >= 1 && date <= 7) {
-        startDay = 1;
-        endDay = 7;
-    } else if (date >= 8 && date <= 14) {
-        startDay = 8;
-        endDay = 14;
-    } else if (date >= 15 && date <= 21) {
-        startDay = 15;
-        endDay = 21;
-    } else if (date >= 22 && date <= 28) {
-        startDay = 22;
-        endDay = 28;
-    } else {
-        return null; // outside valid period
-    }
+  const lastMondayJST = new Date(
+    Date.UTC(
+      nowJST.getUTCFullYear(),
+      nowJST.getUTCMonth(),
+      nowJST.getUTCDate() - daysSinceMonday,
+      14, 59, 59 // 23:59:59 JST = 14:59:59 UTC
+    )
+  );
 
-    const start = new Date(Date.UTC(year, month, startDay - 1, 15, 0, 1)); // JST 00:00:01
-    const end = new Date(Date.UTC(year, month, endDay, 14, 59, 59));       // JST 23:59:59
+  const startDate = new Date(lastMondayJST.getTime() + 2000); // Tuesday 00:00:01 JST
+  const endDate = new Date(startDate.getTime() + 6 * 24 * 60 * 60 * 1000 + 86399000); // Next Monday 23:59:59 JST
 
-    return {
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-    };
+  return {
+    startDate: startDate.toISOString(),
+    endDate: endDate.toISOString(),
+  };
 }
 
 async function fetchLeaderboardData() {
-    try {
-        const period = getJST7DayPeriodWindow();
-        if (!period) {
-            console.log("No leaderboard active (JST 29–31).");
-            leaderboardCache = [];
-            return;
-        }
+  try {
+    const { startDate, endDate } = getJSTWeeklyPeriod();
 
-        const { startDate, endDate } = period;
+    const response = await axios.get(apiUrl, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      params: {
+        userId: "26ae487b-5706-4a7e-8a69-33a8a9c9631b",
+        startDate,
+        endDate,
+      },
+    });
 
-        const response = await axios.get(apiUrl, {
-            headers: { Authorization: `Bearer ${apiKey}` },
-            params: {
-                userId: "26ae487b-5706-4a7e-8a69-33a8a9c9631b",
-                startDate,
-                endDate,
-            },
-        });
+    const data = response.data;
 
-        const data = response.data;
+    leaderboardCache = data
+      .filter((player) => player.username !== "azisai205")
+      .sort((a, b) => b.weightedWagered - a.weightedWagered)
+      .map((player) => ({
+        username: formatUsername(player.username),
+        wagered: Math.round(player.weightedWagered),
+        weightedWager: Math.round(player.weightedWagered),
+      }));
 
-        leaderboardCache = data
-            .filter((player) => player.username !== "azisai205")
-            .sort((a, b) => b.weightedWagered - a.weightedWagered)
-            .map((player) => ({
-                username: formatUsername(player.username),
-                wagered: Math.round(player.weightedWagered),
-                weightedWager: Math.round(player.weightedWagered),
-            }));
-
-        console.log(`✅ Updated leaderboard cache for ${startDate} to ${endDate}`);
-    } catch (error) {
-        console.error("❌ Error fetching leaderboard:", error.message);
-    }
+    console.log(`✅ Leaderboard updated for ${startDate} → ${endDate}`);
+  } catch (error) {
+    console.error("❌ Error fetching leaderboard:", error.message);
+  }
 }
 
 // Routes
 app.get("/", (req, res) => {
-    res.send("Welcome. Access /1000 or /5000 for this week's filtered data.");
+  res.send("Welcome. Access /1000 or /5000 for this week's filtered data.");
 });
 
-// 1000 ≤ wager < 5000
 app.get("/1000", (req, res) => {
-    const filtered = leaderboardCache.filter(
-        (p) => p.weightedWager >= 1000 && p.weightedWager < 5000
-    );
-    res.json(filtered);
+  const filtered = leaderboardCache.filter(
+    (p) => p.weightedWager >= 1000 && p.weightedWager < 5000
+  );
+  res.json(filtered);
 });
 
-// wager ≥ 5000
 app.get("/5000", (req, res) => {
-    const filtered = leaderboardCache.filter((p) => p.weightedWager >= 5000);
-    res.json(filtered);
+  const filtered = leaderboardCache.filter((p) => p.weightedWager >= 5000);
+  res.json(filtered);
 });
 
-
-// Refresh cache every 5 mins
+// Refresh every 5 mins
 fetchLeaderboardData();
 setInterval(fetchLeaderboardData, 5 * 60 * 1000);
 
 // Keep Render alive
 setInterval(() => {
-    axios.get("https://azisaiweekly-upnb.onrender.com/5000")
-        .then(() => console.log("🔁 Self-ping success"))
-        .catch((err) => console.error("Self-ping failed:", err.message));
+  axios
+    .get("https://azisaiweekly-upnb.onrender.com/5000")
+    .then(() => console.log("🔁 Self-ping success"))
+    .catch((err) => console.error("Self-ping failed:", err.message));
 }, 4 * 60 * 1000);
 
 // Start server
 app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Server live at port ${PORT}`);
+  console.log(`🚀 Server live on port ${PORT}`);
 });
