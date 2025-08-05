@@ -18,25 +18,28 @@ const formatUsername = (username) => {
     return `${firstTwo}***${lastTwo}`;
 };
 
-// Get current JST weekly leaderboard window: Tuesday 00:00:01 JST - next Monday 23:59:59 JST
+// Get current JST weekly leaderboard window, ending Monday 23:59:59 JST
 function getJSTWeeklyWindow() {
-    // Current UTC+9 (JST)
+    // Current time in JST (UTC+9)
     const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
 
-    // Day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
-    let dayOfWeek = now.getUTCDay();
-
-    // Find Monday of this week in JST
-    const diffToMonday = (dayOfWeek + 6) % 7; // since 1=Monday in getUTCDay
-    // End: This week's Monday 23:59:59 JST
+    // End date is the most recent Monday at 23:59:59 JST
     const end = new Date(now);
-    end.setUTCDate(now.getUTCDate() - diffToMonday + 1);
-    end.setUTCHours(14, 59, 59, 0); // 23:59:59 JST (UTC 14:59:59)
+    let dayOfWeek = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ...
 
-    // Start: Last week's Tuesday 00:00:01 JST
+    // If it's not Monday, go back to the previous Monday
+    if (dayOfWeek !== 1) {
+        let daysToSubtract = (dayOfWeek + 6) % 7;
+        end.setUTCDate(now.getUTCDate() - daysToSubtract);
+    }
+    
+    // Set time to 23:59:59 JST (which is 14:59:59 UTC on the same day)
+    end.setUTCHours(14, 59, 59, 999);
+
+    // Start date is the Tuesday of the previous week
     const start = new Date(end);
-    start.setUTCDate(end.getUTCDate() - 6); // last Tuesday
-    start.setUTCHours(15, 0, 1, 0); // 00:00:01 JST (UTC 15:00:01 previous day)
+    start.setUTCDate(end.getUTCDate() - 6); // Go back 6 days to the previous Tuesday
+    start.setUTCHours(15, 0, 0, 0); // 00:00:00 JST (which is 15:00:00 UTC on the previous day)
 
     return {
         startDate: start.toISOString(),
