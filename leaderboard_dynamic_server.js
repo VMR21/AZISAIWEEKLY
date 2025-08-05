@@ -18,38 +18,61 @@ const formatUsername = (username) => {
     return `${firstTwo}***${lastTwo}`;
 };
 
-// Get current JST weekly leaderboard window, ending Monday 23:59:59 JST
-function getJSTWeeklyWindow() {
-    // Current time in JST (UTC+9)
-    const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+// Use an API to get the current time in JST
+async function getJSTWeeklyWindow() {
+    try {
+        const timeApiUrl = "http://worldtimeapi.org/api/timezone/Asia/Tokyo";
+        const response = await axios.get(timeApiUrl);
+        const jstTime = new Date(response.data.datetime);
+        
+        // Find the most recent Monday at 23:59:59 JST
+        const end = new Date(jstTime);
+        let dayOfWeek = jstTime.getUTCDay(); // 0 = Sunday, 1 = Monday, ...
 
-    // End date is the most recent Monday at 23:59:59 JST
-    const end = new Date(now);
-    let dayOfWeek = now.getUTCDay(); // 0 = Sunday, 1 = Monday, ...
+        // If it's not Monday, go back to the previous Monday
+        if (dayOfWeek !== 1) {
+            const daysToSubtract = (dayOfWeek + 6) % 7;
+            end.setUTCDate(jstTime.getUTCDate() - daysToSubtract);
+        }
 
-    // If it's not Monday, go back to the previous Monday
-    if (dayOfWeek !== 1) {
-        let daysToSubtract = (dayOfWeek + 6) % 7;
-        end.setUTCDate(now.getUTCDate() - daysToSubtract);
+        // Set time to 23:59:59 JST
+        end.setUTCHours(23, 59, 59, 999);
+        
+        // Start date is the Tuesday of the previous week
+        const start = new Date(end);
+        start.setUTCDate(end.getUTCDate() - 6); // Go back 6 days to the previous Tuesday
+        start.setUTCHours(0, 0, 0, 0); // 00:00:00 JST
+
+        return {
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+        };
+    } catch (error) {
+        console.error("❌ Error fetching JST time from API:", error.message);
+        // Fallback to local server time with manual offset if API fails
+        const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
+        
+        const end = new Date(now);
+        let dayOfWeek = now.getUTCDay();
+        if (dayOfWeek !== 1) {
+            const daysToSubtract = (dayOfWeek + 6) % 7;
+            end.setUTCDate(now.getUTCDate() - daysToSubtract);
+        }
+        end.setUTCHours(14, 59, 59, 999);
+        const start = new Date(end);
+        start.setUTCDate(end.getUTCDate() - 6);
+        start.setUTCHours(15, 0, 0, 0);
+
+        return {
+            startDate: start.toISOString(),
+            endDate: end.toISOString(),
+        };
     }
-    
-    // Set time to 23:59:59 JST (which is 14:59:59 UTC on the same day)
-    end.setUTCHours(14, 59, 59, 999);
-
-    // Start date is the Tuesday of the previous week
-    const start = new Date(end);
-    start.setUTCDate(end.getUTCDate() - 6); // Go back 6 days to the previous Tuesday
-    start.setUTCHours(15, 0, 0, 0); // 00:00:00 JST (which is 15:00:00 UTC on the previous day)
-
-    return {
-        startDate: start.toISOString(),
-        endDate: end.toISOString(),
-    };
 }
 
 async function fetchLeaderboardData() {
     try {
-        const period = getJSTWeeklyWindow();
+        const period = await getJSTWeeklyWindow();
         const { startDate, endDate } = period;
 
         const response = await axios.get(apiUrl, {
